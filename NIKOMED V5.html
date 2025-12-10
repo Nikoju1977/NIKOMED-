@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QUANTUM AI | CONCEPT BY NIKO</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.10.0/dist/tf-backend-webgl.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <style>
+        /* --- DESIGN SYSTEM DARK MODE --- */
+        :root {
+            --bg: #050505;
+            --panel: #141414;
+            --primary: #00f2ff; /* Cyan Futuriste */
+            --success: #00ff88;
+            --danger: #ff4444;
+            --warning: #ffcc00;
+            --text: #ffffff;
+            --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            margin: 0; padding: 15px;
+            display: flex; flex-direction: column; align-items: center;
+            min-height: 100vh;
+        }
+
+        /* --- SIGNATURE BRANDING --- */
+        .brand-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 1.8rem; margin: 0;
+            text-transform: uppercase; letter-spacing: 2px;
+            background: linear-gradient(90deg, var(--primary), #bc13fe);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            font-weight: 900;
+        }
+
+        .concept-signature {
+            font-family: 'Courier New', monospace;
+            color: var(--primary);
+            font-size: 0.9rem;
+            letter-spacing: 4px;
+            margin-top: 5px;
+            text-shadow: 0 0 10px rgba(0, 242, 255, 0.4);
+            opacity: 0.9;
+            font-weight: bold;
+        }
+        
+        /* --- ÉCRAN PRINCIPAL (VIDÉO + CANVAS) --- */
+        #viewport {
+            position: relative;
+            width: 100%; max-width: 600px;
+            aspect-ratio: 4/3; 
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid #333;
+            box-shadow: 0 0 30px rgba(0, 242, 255, 0.1);
+        }
+
+        video, canvas {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: cover; 
+            transform: scaleX(-1); 
+        }
+        
+        #videoElement { z-index: 1; display: block; } 
+        #faceCanvas { z-index: 2; } 
+
+        /* Overlay de chargement */
+        #loader-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 10;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            backdrop-filter: blur(5px); transition: opacity 0.5s;
+        }
+
+        /* --- CONTRÔLES --- */
+        #controls {
+            width: 100%; max-width: 600px;
+            margin-top: 20px;
+            display: flex; flex-direction: column; gap: 12px;
+        }
+
+        button {
+            background: var(--panel); color: white;
+            border: 1px solid #333; padding: 18px;
+            border-radius: 10px; font-size: 1rem; font-weight: 700;
+            cursor: pointer; transition: all 0.2s;
+            text-transform: uppercase;
+        }
+        button:active { transform: scale(0.98); }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .btn-cam { border-color: var(--primary); color: var(--primary); }
+        .btn-ana { background: var(--success); color: #000; border: none; }
+        .btn-stop { background: var(--danger); color: #fff; border: none; }
+
+        /* --- RÉSULTATS --- */
+        .card {
+            width: 100%; max-width: 600px;
+            background: var(--panel);
+            border-radius: 10px; padding: 15px; margin-top: 15px;
+            border: 1px solid #222;
+        }
+
+        #live-data { font-family: monospace; font-size: 0.9rem; color: #aaa; text-align: center; }
+        
+        .result-box { text-align: center; padding: 10px; border-radius: 6px; margin-top: 10px; }
+        .res-ok { background: rgba(0,255,136,0.15); color: var(--success); border: 1px solid var(--success); }
+        .res-warn { background: rgba(255,204,0,0.15); color: var(--warning); border: 1px solid var(--warning); }
+        .res-danger { background: rgba(255,68,68,0.15); color: var(--danger); border: 1px solid var(--danger); }
+
+        /* --- ANIMATIONS --- */
+        .spinner {
+            width: 50px; height: 50px;
+            border: 5px solid #333; border-top: 5px solid var(--primary);
+            border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        
+        footer {
+            margin-top: 30px; color: #444; font-size: 0.7rem; font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="brand-container">
+        <h1>nikomed</h1>
+        <div class="concept-signature">CONCEPT BY NIKO</div>
+    </div>
+
+    <div id="viewport">
+        <video id="videoElement" playsinline autoplay muted></video>
+        <canvas id="faceCanvas"></canvas>
+        
+        <div id="loader-layer">
+            <div class="spinner"></div>
+            <div id="loading-text">Initialisation Moteur Neural...</div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <button id="btn-cam" class="btn-cam" disabled>1. ACTIVER CAMÉRA</button>
+        <button id="btn-ana" disabled>2. LANCER ANALYSE (10s)</button>
+        
+        <div class="card">
+            <div id="live-data">En attente du flux vidéo...</div>
+            <canvas id="chart" style="height:120px; margin-
